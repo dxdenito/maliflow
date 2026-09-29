@@ -55,6 +55,9 @@ class UserService:
                 detail="Account is inactive",
             )
 
-        access_token = create_access_token(user.id)
+        access_token = create_access_token({
+            "sub": str(user.id),
+            "type": "access",
+        })
 
         return user, access_token
