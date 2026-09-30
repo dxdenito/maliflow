@@ -5,6 +5,8 @@ from sqlalchemy import text
 from app.core.database import engine
 from app.routes.auth import router as auth_router
 from app.routes.financial_account import router as financial_account_router
+from app.routes.ledger import router as ledger_router
+from app.routes.financial_position import router as financial_position_router
 
 
 app = FastAPI(
@@ -29,6 +31,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(financial_account_router)
+app.include_router(ledger_router)
+app.include_router(financial_position_router)
 
 
 @app.get("/")
