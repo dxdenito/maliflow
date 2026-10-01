@@ -16,11 +16,13 @@ class LedgerService:
         description: str | None = None,
         reference_type: str | None = None,
         reference_id: int | None = None,
+        is_internal: bool = False,
     ) -> LedgerEntry:
         entry = LedgerEntry(
             user_id=user_id,
             entry_type=entry_type,
             amount=amount,
+            is_internal=is_internal,
             description=description,
             reference_type=reference_type,
             reference_id=reference_id,

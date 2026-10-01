@@ -12,6 +12,7 @@ import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import SplashPage from "./pages/SplashPage";
+import IncomePage from "./pages/IncomePage";
 
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
               path="/dashboard"
               element={<DashboardPage />}
             />
+            <Route path="/income" element={<IncomePage />} />
 
           </Route>
 

@@ -28,6 +28,7 @@ class LedgerRepository:
             .where(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.amount > 0,
+                LedgerEntry.is_internal.is_(False),
             )
         )
 
@@ -36,6 +37,7 @@ class LedgerRepository:
             .where(
                 LedgerEntry.user_id == user_id,
                 LedgerEntry.amount < 0,
+                LedgerEntry.is_internal.is_(False),
             )
         )
 
@@ -44,3 +46,17 @@ class LedgerRepository:
             "total_out": abs(debits),
             "net_movement": credits + debits,
         }
+    
+    def get_by_reference(
+        self,
+        user_id: int,
+        reference_type: str,
+        reference_id: int,
+    ) -> LedgerEntry | None:
+        statement = select(LedgerEntry).where(
+            LedgerEntry.user_id == user_id,
+            LedgerEntry.reference_type == reference_type,
+            LedgerEntry.reference_id == reference_id,
+        )
+
+        return self.db.scalar(statement)
