@@ -13,6 +13,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import SplashPage from "./pages/SplashPage";
 import IncomePage from "./pages/IncomePage";
+import ExpensesPage from "./pages/ExpensesPage";
 
 
 function App() {
@@ -46,6 +47,8 @@ function App() {
               element={<DashboardPage />}
             />
             <Route path="/income" element={<IncomePage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
+            
 
           </Route>
 

@@ -35,6 +35,11 @@ class Obligation(Base):
         nullable=False,
         index=True,
     )
+    expense_id: Mapped[int | None] = mapped_column(
+        ForeignKey("expenses.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     amount_paid: Mapped[Decimal] = mapped_column(

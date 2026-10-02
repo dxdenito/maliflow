@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 const navigation = [
   { label: "Dashboard", path: "/dashboard", available: true },
   { label: "Income", path: "/income", available: true },
-  { label: "Expenses", path: "/expenses", available: false },
+  { label: "Expenses", path: "/expenses", available: true },
   { label: "Budgets", path: "/budgets", available: false },
   { label: "Savings", path: "/savings", available: false },
   { label: "Investments", path: "/investments", available: false },
