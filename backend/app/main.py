@@ -9,6 +9,8 @@ from app.routes.ledger import router as ledger_router
 from app.routes.financial_position import router as financial_position_router
 from app.routes.income import router as income_router
 from app.routes.expenses import router as expenses_router
+from app.routes.expense_categories import router as expense_categories_router
+from app.routes.budgets import router as budgets_router
 
 
 app = FastAPI(
@@ -37,6 +39,8 @@ app.include_router(ledger_router)
 app.include_router(financial_position_router)
 app.include_router(income_router)
 app.include_router(expenses_router)
+app.include_router(expense_categories_router)
+app.include_router(budgets_router)
 
 
 @app.get("/")

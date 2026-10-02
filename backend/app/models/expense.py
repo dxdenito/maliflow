@@ -12,7 +12,11 @@ class Expense(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("expense_categories.id"),
+        nullable=False,
+        index=True,
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
     expense_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

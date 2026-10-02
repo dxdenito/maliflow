@@ -6,7 +6,7 @@ const navigation = [
   { label: "Dashboard", path: "/dashboard", available: true },
   { label: "Income", path: "/income", available: true },
   { label: "Expenses", path: "/expenses", available: true },
-  { label: "Budgets", path: "/budgets", available: false },
+  { label: "Budgets", path: "/budgets", available: true },
   { label: "Savings", path: "/savings", available: false },
   { label: "Investments", path: "/investments", available: false },
   { label: "Obligations", path: "/obligations", available: false },

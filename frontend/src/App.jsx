@@ -14,6 +14,7 @@ import RegisterPage from "./pages/RegisterPage";
 import SplashPage from "./pages/SplashPage";
 import IncomePage from "./pages/IncomePage";
 import ExpensesPage from "./pages/ExpensesPage";
+import BudgetsPage from "./pages/BudgetsPage";
 
 
 function App() {
@@ -48,6 +49,7 @@ function App() {
             />
             <Route path="/income" element={<IncomePage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/budgets" element={<BudgetsPage />} />
             
 
           </Route>
