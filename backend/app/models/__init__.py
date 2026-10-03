@@ -6,6 +6,7 @@ from app.models.ledger import LedgerEntry
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.models.budget import Budget
+from app.models.investment import Investment
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "ExpenseCategory",
     "Obligation",
     "Budget",
+    "Investment",
 ]

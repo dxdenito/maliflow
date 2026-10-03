@@ -13,6 +13,7 @@ from app.routes.expense_categories import router as expense_categories_router
 from app.routes.budgets import router as budgets_router
 from app.routes.savings import router as savings_router
 from app.routes.obligations import router as obligations_router
+from app.routes.investments import router as investments_router
 
 
 
@@ -48,7 +49,7 @@ app.include_router(expense_categories_router)
 app.include_router(budgets_router)
 app.include_router(savings_router)
 app.include_router(obligations_router)
-
+app.include_router(investments_router)
 
 
 @app.get("/")

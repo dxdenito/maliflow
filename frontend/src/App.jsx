@@ -17,6 +17,7 @@ import ExpensesPage from "./pages/ExpensesPage";
 import BudgetsPage from "./pages/BudgetsPage";
 import SavingsPage from "./pages/SavingsPage";
 import ObligationsPage from "./pages/ObligationsPage";
+import InvestmentsPage from "./pages/InvestmentsPage";
 
 
 function App() {
@@ -51,7 +52,7 @@ function App() {
             <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/savings" element={<SavingsPage />} />
             <Route path="/obligations" element={<ObligationsPage />} />
-            
+            <Route path="/investments" element={<InvestmentsPage />} />
 
           </Route>
 
