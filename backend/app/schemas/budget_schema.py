@@ -58,3 +58,4 @@ class BudgetVsActualResponse(BaseModel):
     remaining_amount: Decimal
     usage_percentage: Decimal
     is_overspent: bool
+

@@ -7,9 +7,9 @@ const navigation = [
   { label: "Income", path: "/income", available: true },
   { label: "Expenses", path: "/expenses", available: true },
   { label: "Budgets", path: "/budgets", available: true },
-  { label: "Savings", path: "/savings", available: false },
+  { label: "Savings", path: "/savings", available: true },
   { label: "Investments", path: "/investments", available: false },
-  { label: "Obligations", path: "/obligations", available: false },
+  { label: "Obligations", path: "/obligations", available: true },
 ];
 
 function DashboardLayout() {

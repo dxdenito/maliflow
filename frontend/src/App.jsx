@@ -15,6 +15,8 @@ import SplashPage from "./pages/SplashPage";
 import IncomePage from "./pages/IncomePage";
 import ExpensesPage from "./pages/ExpensesPage";
 import BudgetsPage from "./pages/BudgetsPage";
+import SavingsPage from "./pages/SavingsPage";
+import ObligationsPage from "./pages/ObligationsPage";
 
 
 function App() {
@@ -43,13 +45,12 @@ function App() {
 
           <Route element={<DashboardLayout />}>
 
-            <Route
-              path="/dashboard"
-              element={<DashboardPage />}
-            />
+            <Route path="/dashboard" element={<DashboardPage />}/>
             <Route path="/income" element={<IncomePage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/budgets" element={<BudgetsPage />} />
+            <Route path="/savings" element={<SavingsPage />} />
+            <Route path="/obligations" element={<ObligationsPage />} />
             
 
           </Route>

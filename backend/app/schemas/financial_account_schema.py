@@ -11,6 +11,7 @@ class OpeningBalanceCreate(BaseModel):
 class FinancialAccountResponse(BaseModel):
     id: int
     available_funds: Decimal
+    savings_funds: Decimal
     created_at: datetime
     updated_at: datetime
 

@@ -32,6 +32,13 @@ class FinancialAccount(Base):
         server_default="0.00",
         nullable=False,
     )
+    
+    savings_funds: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2),
+        default=Decimal("0.00"),
+        server_default="0.00",
+        nullable=False,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

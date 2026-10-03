@@ -1,3 +1,4 @@
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,38 @@ class ObligationRepository:
         self.db.flush()
         return obligation
 
-    def get_by_expense(self, user_id: int, expense_id: int) -> list[Obligation]:
+    def get_by_id(
+        self,
+        obligation_id: int,
+        user_id: int,
+        lock: bool = False,
+    ) -> Obligation | None:
+        statement = select(Obligation).where(
+            Obligation.id == obligation_id,
+            Obligation.user_id == user_id,
+        )
+
+        if lock:
+            statement = statement.with_for_update()
+
+        return self.db.scalar(statement)
+
+    def get_by_user_id(self, user_id: int) -> list[Obligation]:
+        statement = (
+            select(Obligation)
+            .where(Obligation.user_id == user_id)
+            .order_by(
+                Obligation.obligation_date.desc(),
+                Obligation.id.desc(),
+            )
+        )
+        return list(self.db.scalars(statement).all())
+
+    def get_by_expense(
+        self,
+        user_id: int,
+        expense_id: int,
+    ) -> list[Obligation]:
         statement = select(Obligation).where(
             Obligation.user_id == user_id,
             Obligation.expense_id == expense_id,

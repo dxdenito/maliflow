@@ -11,6 +11,11 @@ from app.routes.income import router as income_router
 from app.routes.expenses import router as expenses_router
 from app.routes.expense_categories import router as expense_categories_router
 from app.routes.budgets import router as budgets_router
+from app.routes.savings import router as savings_router
+from app.routes.obligations import router as obligations_router
+
+
+
 
 
 app = FastAPI(
@@ -41,6 +46,9 @@ app.include_router(income_router)
 app.include_router(expenses_router)
 app.include_router(expense_categories_router)
 app.include_router(budgets_router)
+app.include_router(savings_router)
+app.include_router(obligations_router)
+
 
 
 @app.get("/")
