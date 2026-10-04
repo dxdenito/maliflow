@@ -1,205 +1,415 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
+  contributeToInvestment,
   createInvestment,
+  getInvestmentTransactions,
   getInvestments,
-  redeemInvestment,
   updateInvestment,
+  updateInvestmentValuation,
+  withdrawFromInvestment,
 } from "../services/investment_service";
 
-const investmentTypes = [
-  { value: "stock", label: "Stock" },
-  { value: "bond", label: "Bond" },
-  { value: "mmf", label: "Money Market Fund" },
-  { value: "sacco", label: "SACCO" },
-  { value: "crypto", label: "Crypto" },
-  { value: "business", label: "Business" },
-  { value: "real_estate", label: "Real Estate" },
-  { value: "other", label: "Other" },
-];
 
-const initialForm = {
-  name: "",
-  investment_type: "mmf",
-  principal_amount: "",
-  investment_date: new Date().toISOString().split("T")[0],
-  maturity_date: "",
-  description: "",
-};
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 
-function InvestmentsPage() {
+
+function formatDate(value) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("en-KE", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+
+function getGainLoss(investment) {
+  return (
+    Number(investment.current_value || 0) -
+    Number(investment.current_invested_capital || 0)
+  );
+}
+
+
+function getLifetimeStats(investment, transactions) {
+  const lifetimeContributions = transactions
+    .filter(
+      (transaction) =>
+        transaction.transaction_type === "contribution"
+    )
+    .reduce(
+      (total, transaction) =>
+        total + Number(transaction.amount || 0),
+      0
+    );
+
+  const lifetimeWithdrawals = transactions
+    .filter(
+      (transaction) =>
+        transaction.transaction_type === "withdrawal"
+    )
+    .reduce(
+      (total, transaction) =>
+        total + Number(transaction.amount || 0),
+      0
+    );
+
+  const realizedProfit = transactions
+    .filter(
+      (transaction) =>
+        transaction.transaction_type === "withdrawal"
+    )
+    .reduce(
+      (total, transaction) =>
+        total + Number(transaction.profit_component || 0),
+      0
+    );
+
+  const currentGainLoss = getGainLoss(investment);
+
+  const lifetimeProfit =
+    realizedProfit + currentGainLoss;
+
+  return {
+    lifetimeContributions,
+    lifetimeWithdrawals,
+    realizedProfit,
+    currentGainLoss,
+    lifetimeProfit,
+  };
+}
+
+
+function transactionLabel(type) {
+  switch (type) {
+    case "contribution":
+      return "Contribution";
+
+    case "valuation":
+      return "Valuation";
+
+    case "withdrawal":
+      return "Withdrawal";
+
+    default:
+      return type;
+  }
+}
+
+
+function transactionAmount(transaction) {
+  if (transaction.transaction_type === "valuation") {
+    return Number(transaction.amount || 0);
+  }
+
+  return Number(transaction.amount || 0);
+}
+
+
+export default function InvestmentsPage() {
   const [investments, setInvestments] = useState([]);
+  const [selectedInvestment, setSelectedInvestment] =
+    useState(null);
+
+  const [transactions, setTransactions] = useState([]);
+
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const [error, setError] = useState("");
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingInvestment, setEditingInvestment] = useState(null);
-  const [form, setForm] = useState(initialForm);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showContribute, setShowContribute] = useState(false);
+  const [showValuation, setShowValuation] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const [valuationInvestment, setValuationInvestment] = useState(null);
+  const [form, setForm] = useState({
+    name: "",
+    investment_type: "mmf",
+    principal_amount: "",
+    investment_date: new Date()
+      .toISOString()
+      .split("T")[0],
+    maturity_date: "",
+    description: "",
+  });
+
+  const [amount, setAmount] = useState("");
+
   const [valuation, setValuation] = useState("");
 
-  const [redemptionInvestment, setRedemptionInvestment] = useState(null);
-  const [redemptionAmount, setRedemptionAmount] = useState("");
+  const [editForm, setEditForm] = useState({
+    name: "",
+    investment_type: "mmf",
+    maturity_date: "",
+    description: "",
+  });
 
-  useEffect(() => {
-    loadInvestments();
-  }, []);
 
   async function loadInvestments() {
     try {
-      setLoading(true);
       setError("");
 
       const data = await getInvestments();
+
       setInvestments(data);
+
+      if (
+        selectedInvestment &&
+        !data.some(
+          (investment) =>
+            investment.id === selectedInvestment.id
+        )
+      ) {
+        setSelectedInvestment(null);
+      }
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message || "Failed to load investments."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  const summary = useMemo(() => {
-    const principal = investments.reduce(
-      (total, item) => total + Number(item.principal_amount || 0),
-      0
-    );
 
-    const current = investments.reduce(
-      (total, item) => total + Number(item.current_value || 0),
-      0
-    );
+  useEffect(() => {
+    loadInvestments();
+  }, []);
 
-    const active = investments.filter(
-      (item) =>
-        item.status === "active" ||
-        item.status === "partially_redeemed"
-    ).length;
 
-    return {
-      principal,
-      current,
-      gainLoss: current - principal,
-      active,
-    };
-  }, [investments]);
-
-  function openCreateForm() {
-    setEditingInvestment(null);
-    setForm(initialForm);
-    setShowForm(true);
-    setError("");
-  }
-
-  function openEditForm(investment) {
-    setEditingInvestment(investment);
-
-    setForm({
-      name: investment.name,
-      investment_type: investment.investment_type,
-      principal_amount: investment.principal_amount,
-      investment_date: investment.investment_date,
-      maturity_date: investment.maturity_date || "",
-      description: investment.description || "",
-    });
-
-    setShowForm(true);
-    setError("");
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  async function loadTransactions(investment) {
     try {
-      setSaving(true);
-      setError("");
+      const data =
+        await getInvestmentTransactions(
+          investment.id
+        );
 
-      if (editingInvestment) {
-        await updateInvestment(editingInvestment.id, {
-          name: form.name,
-          investment_type: form.investment_type,
-          maturity_date: form.maturity_date || null,
-          description: form.description || null,
-        });
-      } else {
-        await createInvestment({
-          name: form.name,
-          investment_type: form.investment_type,
-          principal_amount: form.principal_amount,
-          investment_date: form.investment_date,
-          maturity_date: form.maturity_date || null,
-          description: form.description || null,
-        });
-      }
-
-      setShowForm(false);
-      setEditingInvestment(null);
-      setForm(initialForm);
-
-      await loadInvestments();
+      setSelectedInvestment(investment);
+      setTransactions(data);
     } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
+      setError(
+        err.message || "Failed to load investment history."
+      );
     }
   }
+
+
+  function closeModals() {
+    setShowCreate(false);
+    setShowContribute(false);
+    setShowValuation(false);
+    setShowWithdraw(false);
+    setShowEdit(false);
+    setShowHistory(false);
+
+    setAmount("");
+    setValuation("");
+  }
+
+
+  function openContribute(investment) {
+    setSelectedInvestment(investment);
+    setAmount("");
+    setShowContribute(true);
+  }
+
 
   function openValuation(investment) {
-    setValuationInvestment(investment);
-    setValuation(investment.current_value);
+    setSelectedInvestment(investment);
+    setValuation(
+      Number(investment.current_value || 0).toFixed(2)
+    );
+    setShowValuation(true);
   }
 
-  async function handleValuationSubmit(event) {
+
+  function openWithdraw(investment) {
+    setSelectedInvestment(investment);
+    setAmount("");
+    setShowWithdraw(true);
+  }
+
+
+  function openEdit(investment) {
+    setSelectedInvestment(investment);
+
+    setEditForm({
+      name: investment.name || "",
+      investment_type:
+        investment.investment_type || "mmf",
+      maturity_date:
+        investment.maturity_date || "",
+      description:
+        investment.description || "",
+    });
+
+    setShowEdit(true);
+  }
+
+
+  async function handleCreate(event) {
     event.preventDefault();
 
     try {
-      setSaving(true);
+      setActionLoading(true);
       setError("");
 
-      await updateInvestment(valuationInvestment.id, {
-        current_value: valuation,
+      await createInvestment({
+        ...form,
+        maturity_date:
+          form.maturity_date || null,
+        description:
+          form.description || null,
       });
 
-      setValuationInvestment(null);
-      setValuation("");
+      setForm({
+        name: "",
+        investment_type: "mmf",
+        principal_amount: "",
+        investment_date: new Date()
+          .toISOString()
+          .split("T")[0],
+        maturity_date: "",
+        description: "",
+      });
 
+      closeModals();
       await loadInvestments();
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message || "Failed to create investment."
+      );
     } finally {
-      setSaving(false);
+      setActionLoading(false);
     }
   }
 
-  function openRedemption(investment) {
-    setRedemptionInvestment(investment);
-    setRedemptionAmount("");
-  }
 
-  async function handleRedemptionSubmit(event) {
+  async function handleContribution(event) {
     event.preventDefault();
 
     try {
-      setSaving(true);
+      setActionLoading(true);
       setError("");
 
-      await redeemInvestment(
-        redemptionInvestment.id,
-        redemptionAmount
+      await contributeToInvestment(
+        selectedInvestment.id,
+        Number(amount)
       );
 
-      setRedemptionInvestment(null);
-      setRedemptionAmount("");
-
+      closeModals();
       await loadInvestments();
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message ||
+          "Failed to add investment contribution."
+      );
     } finally {
-      setSaving(false);
+      setActionLoading(false);
     }
   }
+
+
+  async function handleValuation(event) {
+    event.preventDefault();
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      await updateInvestmentValuation(
+        selectedInvestment.id,
+        Number(valuation)
+      );
+
+      closeModals();
+      await loadInvestments();
+    } catch (err) {
+      setError(
+        err.message ||
+          "Failed to update investment valuation."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+
+  async function handleWithdraw(event) {
+    event.preventDefault();
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      await withdrawFromInvestment(
+        selectedInvestment.id,
+        Number(amount)
+      );
+
+      closeModals();
+      await loadInvestments();
+    } catch (err) {
+      setError(
+        err.message ||
+          "Failed to withdraw from investment."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+
+  async function handleEdit(event) {
+    event.preventDefault();
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      await updateInvestment(
+        selectedInvestment.id,
+        {
+          ...editForm,
+          maturity_date:
+            editForm.maturity_date || null,
+          description:
+            editForm.description || null,
+        }
+      );
+
+      closeModals();
+      await loadInvestments();
+    } catch (err) {
+      setError(
+        err.message || "Failed to update investment."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+
+  async function handleHistory(investment) {
+    try {
+      setError("");
+
+      await loadTransactions(investment);
+
+      setShowHistory(true);
+    } catch {
+      // loadTransactions already handles the error.
+    }
+  }
+
 
   if (loading) {
     return (
@@ -211,26 +421,28 @@ function InvestmentsPage() {
     );
   }
 
+
+  const totalCurrentValue = investments.reduce(
+    (total, investment) =>
+      total + Number(investment.current_value || 0),
+    0
+  );
+
+  const totalInvestedCapital = investments.reduce(
+    (total, investment) =>
+      total +
+      Number(
+        investment.current_invested_capital || 0
+      ),
+    0
+  );
+
+  const totalGainLoss =
+    totalCurrentValue - totalInvestedCapital;
+
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Investments
-          </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Track money you've allocated to investments and how they're performing.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={openCreateForm}
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-400"
-        >
-          + New Investment
-        </button>
-      </div>
 
       {error && (
         <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -238,556 +450,1092 @@ function InvestmentsPage() {
         </div>
       )}
 
+
+      {/* Summary */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <PositionCard
-          label="Total Invested"
-          value={summary.principal}
-        />
 
-        <PositionCard
+        <SummaryCard
           label="Current Value"
-          value={summary.current}
+          value={`KSh ${formatMoney(
+            totalCurrentValue
+          )}`}
         />
 
-        <PositionCard
+        <SummaryCard
+          label="Invested Capital"
+          value={`KSh ${formatMoney(
+            totalInvestedCapital
+          )}`}
+        />
+
+        <SummaryCard
           label="Gain / Loss"
-          value={summary.gainLoss}
-          accent={summary.gainLoss >= 0 ? "emerald" : "red"}
+          value={`KSh ${formatMoney(
+            totalGainLoss
+          )}`}
+          valueClass={
+            totalGainLoss >= 0
+              ? "text-emerald-400"
+              : "text-red-400"
+          }
         />
 
-        <CountCard
-          label="Active Investments"
-          value={summary.active}
+        <SummaryCard
+          label="Investment Accounts"
+          value={investments.length}
         />
+
       </section>
 
-      {showForm && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900">
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold">
-                {editingInvestment
-                  ? "Edit Investment"
-                  : "New Investment"}
-              </h2>
 
-              <p className="mt-0.5 text-xs text-slate-500">
-                {editingInvestment
-                  ? "Update the investment details."
-                  : "Allocate money from Available Funds."}
-              </p>
-            </div>
+      {/* Header */}
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="text-xs text-slate-500 hover:text-slate-300"
-            >
-              Cancel
-            </button>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold text-white">
+            Investments
+          </h1>
 
-          <InvestmentForm
-            form={form}
-            setForm={setForm}
-            onSubmit={handleSubmit}
-            loading={saving}
-            editing={Boolean(editingInvestment)}
-          />
-        </section>
-      )}
-
-      <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-        <div className="border-b border-slate-800 px-4 py-3">
-          <h2 className="text-sm font-semibold">Your Investments</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Current investment positions
+          <p className="mt-1 text-sm text-slate-500">
+            Manage investment accounts, contributions,
+            valuations and withdrawals.
           </p>
         </div>
 
-        {investments.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-slate-500">
-            No investments recorded yet.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px]">
-              <thead>
-                <tr className="border-b border-slate-800 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Investment</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Principal</th>
-                  <th className="px-4 py-3">Current Value</th>
-                  <th className="px-4 py-3">Gain / Loss</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Actions</th>
-                </tr>
-              </thead>
+        <button
+          type="button"
+          onClick={() => setShowCreate(true)}
+          className="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-emerald-400"
+        >
+          Add Investment
+        </button>
 
-              <tbody className="divide-y divide-slate-800">
-                {investments.map((investment) => {
-                  const principal = Number(
-                    investment.principal_amount || 0
-                  );
-
-                  const current = Number(
-                    investment.current_value || 0
-                  );
-
-                  const gainLoss = current - principal;
-
-                  return (
-                    <tr
-                      key={investment.id}
-                      className="transition hover:bg-slate-800/30"
-                    >
-                      <td className="px-4 py-3.5">
-                        <p className="text-sm font-medium">
-                          {investment.name}
-                        </p>
-
-                        {investment.maturity_date && (
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            Matures {formatDate(investment.maturity_date)}
-                          </p>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm text-slate-400">
-                        {formatType(investment.investment_type)}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm">
-                        KSh {formatMoney(principal)}
-                      </td>
-
-                      <td className="px-4 py-3.5 text-sm">
-                        KSh {formatMoney(current)}
-                      </td>
-
-                      <td
-                        className={`px-4 py-3.5 text-sm font-medium ${
-                          gainLoss > 0
-                            ? "text-emerald-400"
-                            : gainLoss < 0
-                              ? "text-red-400"
-                              : "text-slate-400"
-                        }`}
-                      >
-                        {gainLoss > 0 ? "+" : ""}
-                        KSh {formatMoney(gainLoss)}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <StatusBadge status={investment.status} />
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        {investment.status !== "redeemed" && (
-                          <div className="flex flex-wrap gap-2">
-                            <ActionButton
-                              onClick={() => openValuation(investment)}
-                            >
-                              Value
-                            </ActionButton>
-
-                            <ActionButton
-                              onClick={() => openEditForm(investment)}
-                            >
-                              Edit
-                            </ActionButton>
-
-                            <ActionButton
-                              onClick={() => openRedemption(investment)}
-                              positive
-                            >
-                              Redeem
-                            </ActionButton>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
-      {valuationInvestment && (
-        <ValuationModal
-          investment={valuationInvestment}
-          value={valuation}
-          setValue={setValuation}
-          loading={saving}
-          onClose={() => setValuationInvestment(null)}
-          onSubmit={handleValuationSubmit}
-        />
+
+      {/* Investments */}
+      <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+
+        <div className="border-b border-slate-800 px-4 py-3">
+          <h2 className="text-sm font-semibold text-white">
+            Investment Accounts
+          </h2>
+        </div>
+
+
+        {investments.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-500">
+            No investment accounts yet.
+          </div>
+        ) : (
+
+          <div className="divide-y divide-slate-800">
+
+            {investments.map((investment) => {
+              const gainLoss =
+                getGainLoss(investment);
+
+              return (
+                <div
+                  key={investment.id}
+                  className="px-4 py-4"
+                >
+
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+
+                    <div className="min-w-0">
+
+                      <div className="flex flex-wrap items-center gap-2">
+
+                        <h3 className="font-medium text-white">
+                          {investment.name}
+                        </h3>
+
+                        <span className="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400">
+                          {investment.investment_type.toUpperCase()}
+                        </span>
+
+                      </div>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Started{" "}
+                        {formatDate(
+                          investment.investment_date
+                        )}
+                      </p>
+
+                    </div>
+
+
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:grid-cols-4">
+
+                      <Metric
+                        label="Value"
+                        value={`KSh ${formatMoney(
+                          investment.current_value
+                        )}`}
+                      />
+
+                      <Metric
+                        label="Capital"
+                        value={`KSh ${formatMoney(
+                          investment.current_invested_capital
+                        )}`}
+                      />
+
+                      <Metric
+                        label="Gain / Loss"
+                        value={`KSh ${formatMoney(
+                          gainLoss
+                        )}`}
+                        valueClass={
+                          gainLoss >= 0
+                            ? "text-emerald-400"
+                            : "text-red-400"
+                        }
+                      />
+
+                      <Metric
+                        label="Initial"
+                        value={`KSh ${formatMoney(
+                          investment.original_investment
+                        )}`}
+                      />
+
+                    </div>
+
+
+                    <div className="flex flex-wrap gap-2">
+
+                      <ActionButton
+                        onClick={() =>
+                          openContribute(
+                            investment
+                          )
+                        }
+                      >
+                        Contribute
+                      </ActionButton>
+
+                      <ActionButton
+                        onClick={() =>
+                          openValuation(
+                            investment
+                          )
+                        }
+                      >
+                        Value
+                      </ActionButton>
+
+                      <ActionButton
+                        onClick={() =>
+                          openWithdraw(
+                            investment
+                          )
+                        }
+                      >
+                        Withdraw
+                      </ActionButton>
+
+                      <ActionButton
+                        onClick={() =>
+                          openEdit(investment)
+                        }
+                      >
+                        Edit
+                      </ActionButton>
+
+                      <ActionButton
+                        onClick={() =>
+                          handleHistory(
+                            investment
+                          )
+                        }
+                      >
+                        History
+                      </ActionButton>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              );
+            })}
+
+          </div>
+        )}
+
+      </section>
+
+
+      {/* Create */}
+      {showCreate && (
+        <Modal
+          title="Add Investment"
+          onClose={closeModals}
+        >
+          <form
+            onSubmit={handleCreate}
+            className="space-y-4"
+          >
+
+            <Input
+              label="Investment Name"
+              value={form.name}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  name: value,
+                })
+              }
+              required
+            />
+
+            <Select
+              label="Investment Type"
+              value={form.investment_type}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  investment_type: value,
+                })
+              }
+              options={[
+                ["stock", "Stock"],
+                ["bond", "Bond"],
+                ["mmf", "MMF"],
+                ["sacco", "SACCO"],
+                ["crypto", "Crypto"],
+                ["business", "Business"],
+                ["real_estate", "Real Estate"],
+                ["other", "Other"],
+              ]}
+            />
+
+            <Input
+              label="Initial Contribution"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={form.principal_amount}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  principal_amount: value,
+                })
+              }
+              required
+            />
+
+            <Input
+              label="Investment Date"
+              type="date"
+              value={form.investment_date}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  investment_date: value,
+                })
+              }
+              required
+            />
+
+            <Input
+              label="Maturity Date"
+              type="date"
+              value={form.maturity_date}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  maturity_date: value,
+                })
+              }
+            />
+
+            <Textarea
+              label="Description"
+              value={form.description}
+              onChange={(value) =>
+                setForm({
+                  ...form,
+                  description: value,
+                })
+              }
+            />
+
+            <ModalActions
+              onCancel={closeModals}
+              loading={actionLoading}
+              submitText="Create Investment"
+            />
+
+          </form>
+        </Modal>
       )}
 
-      {redemptionInvestment && (
-        <RedemptionModal
-          investment={redemptionInvestment}
-          amount={redemptionAmount}
-          setAmount={setRedemptionAmount}
-          loading={saving}
-          onClose={() => setRedemptionInvestment(null)}
-          onSubmit={handleRedemptionSubmit}
-        />
+
+      {/* Contribution */}
+      {showContribute && selectedInvestment && (
+        <Modal
+          title={`Contribute to ${selectedInvestment.name}`}
+          onClose={closeModals}
+        >
+          <form
+            onSubmit={handleContribution}
+            className="space-y-4"
+          >
+
+            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3 text-sm">
+              <p className="text-slate-500">
+                Current Value
+              </p>
+
+              <p className="mt-1 font-medium text-white">
+                KSh{" "}
+                {formatMoney(
+                  selectedInvestment.current_value
+                )}
+              </p>
+            </div>
+
+            <Input
+              label="Contribution Amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={setAmount}
+              required
+            />
+
+            <ModalActions
+              onCancel={closeModals}
+              loading={actionLoading}
+              submitText="Add Contribution"
+            />
+
+          </form>
+        </Modal>
       )}
+
+
+      {/* Valuation */}
+      {showValuation && selectedInvestment && (
+        <Modal
+          title={`Update ${selectedInvestment.name} Value`}
+          onClose={closeModals}
+        >
+          <form
+            onSubmit={handleValuation}
+            className="space-y-4"
+          >
+
+            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3 text-sm">
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">
+                  Current Value
+                </span>
+
+                <span className="text-white">
+                  KSh{" "}
+                  {formatMoney(
+                    selectedInvestment.current_value
+                  )}
+                </span>
+              </div>
+
+              <div className="mt-2 flex justify-between">
+                <span className="text-slate-500">
+                  Invested Capital
+                </span>
+
+                <span className="text-white">
+                  KSh{" "}
+                  {formatMoney(
+                    selectedInvestment.current_invested_capital
+                  )}
+                </span>
+              </div>
+
+            </div>
+
+            <Input
+              label="New Current Value"
+              type="number"
+              min="0"
+              step="0.01"
+              value={valuation}
+              onChange={setValuation}
+              required
+            />
+
+            <p className="text-xs text-slate-500">
+              This changes the investment valuation only.
+              It does not move money in or out of Available
+              Funds.
+            </p>
+
+            <ModalActions
+              onCancel={closeModals}
+              loading={actionLoading}
+              submitText="Update Value"
+            />
+
+          </form>
+        </Modal>
+      )}
+
+
+      {/* Withdrawal */}
+      {showWithdraw && selectedInvestment && (
+        <Modal
+          title={`Withdraw from ${selectedInvestment.name}`}
+          onClose={closeModals}
+        >
+          <form
+            onSubmit={handleWithdraw}
+            className="space-y-4"
+          >
+
+            <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3 text-sm">
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">
+                  Current Value
+                </span>
+
+                <span className="text-white">
+                  KSh{" "}
+                  {formatMoney(
+                    selectedInvestment.current_value
+                  )}
+                </span>
+              </div>
+
+              <div className="mt-2 flex justify-between">
+                <span className="text-slate-500">
+                  Invested Capital
+                </span>
+
+                <span className="text-white">
+                  KSh{" "}
+                  {formatMoney(
+                    selectedInvestment.current_invested_capital
+                  )}
+                </span>
+              </div>
+
+              <div className="mt-2 flex justify-between">
+                <span className="text-slate-500">
+                  Current Gain
+                </span>
+
+                <span
+                  className={
+                    getGainLoss(
+                      selectedInvestment
+                    ) >= 0
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                  }
+                >
+                  KSh{" "}
+                  {formatMoney(
+                    getGainLoss(
+                      selectedInvestment
+                    )
+                  )}
+                </span>
+              </div>
+
+            </div>
+
+            <Input
+              label="Withdrawal Amount"
+              type="number"
+              min="0.01"
+              max={selectedInvestment.current_value}
+              step="0.01"
+              value={amount}
+              onChange={setAmount}
+              required
+            />
+
+            <p className="text-xs text-slate-500">
+              Withdrawals consume current profit first,
+              then invested capital.
+            </p>
+
+            <ModalActions
+              onCancel={closeModals}
+              loading={actionLoading}
+              submitText="Withdraw Funds"
+            />
+
+          </form>
+        </Modal>
+      )}
+
+
+      {/* Edit */}
+      {showEdit && selectedInvestment && (
+        <Modal
+          title={`Edit ${selectedInvestment.name}`}
+          onClose={closeModals}
+        >
+          <form
+            onSubmit={handleEdit}
+            className="space-y-4"
+          >
+
+            <Input
+              label="Investment Name"
+              value={editForm.name}
+              onChange={(value) =>
+                setEditForm({
+                  ...editForm,
+                  name: value,
+                })
+              }
+              required
+            />
+
+            <Select
+              label="Investment Type"
+              value={editForm.investment_type}
+              onChange={(value) =>
+                setEditForm({
+                  ...editForm,
+                  investment_type: value,
+                })
+              }
+              options={[
+                ["stock", "Stock"],
+                ["bond", "Bond"],
+                ["mmf", "MMF"],
+                ["sacco", "SACCO"],
+                ["crypto", "Crypto"],
+                ["business", "Business"],
+                ["real_estate", "Real Estate"],
+                ["other", "Other"],
+              ]}
+            />
+
+            <Input
+              label="Maturity Date"
+              type="date"
+              value={editForm.maturity_date}
+              onChange={(value) =>
+                setEditForm({
+                  ...editForm,
+                  maturity_date: value,
+                })
+              }
+            />
+
+            <Textarea
+              label="Description"
+              value={editForm.description}
+              onChange={(value) =>
+                setEditForm({
+                  ...editForm,
+                  description: value,
+                })
+              }
+            />
+
+            <ModalActions
+              onCancel={closeModals}
+              loading={actionLoading}
+              submitText="Save Changes"
+            />
+
+          </form>
+        </Modal>
+      )}
+
+
+      {/* History */}
+      {showHistory && selectedInvestment && (
+        <Modal
+          title={`${selectedInvestment.name} History`}
+          onClose={closeModals}
+          wide
+        >
+
+          <div className="grid gap-3 sm:grid-cols-3">
+
+            <SummaryCard
+              label="Current Value"
+              value={`KSh ${formatMoney(
+                selectedInvestment.current_value
+              )}`}
+            />
+
+            <SummaryCard
+              label="Current Capital"
+              value={`KSh ${formatMoney(
+                selectedInvestment.current_invested_capital
+              )}`}
+            />
+
+            <SummaryCard
+              label="Current Gain / Loss"
+              value={`KSh ${formatMoney(
+                getGainLoss(
+                  selectedInvestment
+                )
+              )}`}
+              valueClass={
+                getGainLoss(
+                  selectedInvestment
+                ) >= 0
+                  ? "text-emerald-400"
+                  : "text-red-400"
+              }
+            />
+
+          </div>
+
+
+          {transactions.length > 0 && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+
+              {(() => {
+                const stats =
+                  getLifetimeStats(
+                    selectedInvestment,
+                    transactions
+                  );
+
+                return (
+                  <>
+                    <HistoryStat
+                      label="Lifetime Contributions"
+                      value={stats.lifetimeContributions}
+                    />
+
+                    <HistoryStat
+                      label="Lifetime Withdrawals"
+                      value={stats.lifetimeWithdrawals}
+                    />
+
+                    <HistoryStat
+                      label="Lifetime Profit"
+                      value={stats.lifetimeProfit}
+                      valueClass={
+                        stats.lifetimeProfit >= 0
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                      }
+                    />
+                  </>
+                );
+              })()}
+
+            </div>
+          )}
+
+
+          <div className="mt-5 overflow-x-auto">
+
+            {transactions.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">
+                No transactions found.
+              </p>
+            ) : (
+              <table className="w-full min-w-[760px] text-left text-sm">
+
+                <thead>
+                  <tr className="border-b border-slate-800 text-xs text-slate-500">
+
+                    <th className="px-3 py-3 font-medium">
+                      Date
+                    </th>
+
+                    <th className="px-3 py-3 font-medium">
+                      Type
+                    </th>
+
+                    <th className="px-3 py-3 text-right font-medium">
+                      Amount
+                    </th>
+
+                    <th className="px-3 py-3 text-right font-medium">
+                      Capital
+                    </th>
+
+                    <th className="px-3 py-3 text-right font-medium">
+                      Profit
+                    </th>
+
+                    <th className="px-3 py-3 text-right font-medium">
+                      Value After
+                    </th>
+
+                    <th className="px-3 py-3 text-right font-medium">
+                      Capital After
+                    </th>
+
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {transactions.map(
+                    (transaction) => {
+
+                      const amount =
+                        transactionAmount(
+                          transaction
+                        );
+
+                      return (
+                        <tr
+                          key={transaction.id}
+                          className="border-b border-slate-800/70 last:border-0"
+                        >
+
+                          <td className="px-3 py-3 text-slate-400">
+                            {new Date(
+                              transaction.occurred_at
+                            ).toLocaleDateString(
+                              "en-KE",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              }
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-white">
+                            {transactionLabel(
+                              transaction.transaction_type
+                            )}
+                          </td>
+
+                          <td
+                            className={`px-3 py-3 text-right ${
+                              transaction.transaction_type ===
+                              "valuation"
+                                ? amount >= 0
+                                  ? "text-emerald-400"
+                                  : "text-red-400"
+                                : "text-white"
+                            }`}
+                          >
+                            {transaction.transaction_type ===
+                            "valuation"
+                              ? amount >= 0
+                                ? "+"
+                                : ""
+                              : ""}
+
+                            KSh{" "}
+                            {formatMoney(
+                              amount
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-right text-slate-400">
+                            KSh{" "}
+                            {formatMoney(
+                              transaction.capital_component
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-right text-emerald-400">
+                            KSh{" "}
+                            {formatMoney(
+                              transaction.profit_component
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-right text-white">
+                            KSh{" "}
+                            {formatMoney(
+                              transaction.value_after
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-right text-slate-400">
+                            KSh{" "}
+                            {formatMoney(
+                              transaction.capital_after
+                            )}
+                          </td>
+
+                        </tr>
+                      );
+                    }
+                  )}
+
+                </tbody>
+
+              </table>
+            )}
+
+          </div>
+
+        </Modal>
+      )}
+
     </div>
   );
 }
 
-function PositionCard({ label, value, accent }) {
-  const valueClass =
-    accent === "emerald"
-      ? "text-emerald-400"
-      : accent === "red"
-        ? "text-red-400"
-        : "text-white";
 
+function SummaryCard({
+  label,
+  value,
+  valueClass = "text-white",
+}) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tracking-tight ${valueClass}`}>
-        KSh {formatMoney(value)}
+      <p className="text-xs text-slate-500">
+        {label}
       </p>
-    </div>
-  );
-}
 
-function CountCard({ label, value }) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold tracking-tight text-white">
+      <p
+        className={`mt-1 text-xl font-semibold tracking-tight ${valueClass}`}
+      >
         {value}
       </p>
     </div>
   );
 }
 
-function StatusBadge({ status }) {
-  const styles = {
-    active: "bg-emerald-500/10 text-emerald-400",
-    matured: "bg-blue-500/10 text-blue-400",
-    partially_redeemed: "bg-amber-500/10 text-amber-400",
-    redeemed: "bg-slate-800 text-slate-500",
-  };
 
-  return (
-    <span
-      className={`rounded-full px-2 py-1 text-[11px] font-medium ${
-        styles[status] || "bg-slate-800 text-slate-400"
-      }`}
-    >
-      {formatStatus(status)}
-    </span>
-  );
-}
-
-function ActionButton({ children, onClick, positive }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        positive
-          ? "rounded-md bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20"
-          : "rounded-md border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-      }
-    >
-      {children}
-    </button>
-  );
-}
-
-function InvestmentForm({
-  form,
-  setForm,
-  onSubmit,
-  loading,
-  editing,
-}) {
-  function handleChange(event) {
-    const { name, value } = event.target;
-
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="grid gap-4 p-4 sm:grid-cols-2">
-      <FormField
-        label="Investment Name"
-        name="name"
-        value={form.name}
-        onChange={handleChange}
-        placeholder="e.g. Money Market Fund"
-        required
-      />
-
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">
-          Investment Type
-        </label>
-
-        <select
-          name="investment_type"
-          value={form.investment_type}
-          onChange={handleChange}
-          className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-500"
-        >
-          {investmentTypes.map((type) => (
-            <option key={type.value} value={type.value}>
-              {type.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {!editing && (
-        <FormField
-          label="Principal Amount"
-          name="principal_amount"
-          type="number"
-          value={form.principal_amount}
-          onChange={handleChange}
-          placeholder="0.00"
-          min="0.01"
-          step="0.01"
-          required
-        />
-      )}
-
-      <FormField
-        label="Investment Date"
-        name="investment_date"
-        type="date"
-        value={form.investment_date}
-        onChange={handleChange}
-        disabled={editing}
-        required
-      />
-
-      <FormField
-        label="Maturity Date"
-        name="maturity_date"
-        type="date"
-        value={form.maturity_date}
-        onChange={handleChange}
-      />
-
-      <div className="sm:col-span-2">
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">
-          Description
-        </label>
-
-        <textarea
-          name="description"
-          value={form.description}
-          onChange={handleChange}
-          rows={3}
-          placeholder="Optional notes..."
-          className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
-        />
-      </div>
-
-      <div className="sm:col-span-2">
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-medium text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-        >
-          {loading
-            ? "Saving..."
-            : editing
-              ? "Update Investment"
-              : "Create Investment"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function FormField({
+function Metric({
   label,
-  name,
-  type = "text",
   value,
-  onChange,
-  ...props
+  valueClass = "text-white",
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-slate-400">
+      <p className="text-xs text-slate-500">
         {label}
-      </label>
+      </p>
 
-      <input
-        type={type}
-        name={name}
-        value={value}
-        onChange={onChange}
-        {...props}
-        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-      />
+      <p
+        className={`mt-1 font-medium ${valueClass}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
 
-function ValuationModal({
-  investment,
+
+function HistoryStat({
+  label,
   value,
-  setValue,
-  loading,
-  onClose,
-  onSubmit,
+  valueClass = "text-white",
 }) {
   return (
-    <Modal title="Update Valuation" subtitle={investment.name}>
-      <form onSubmit={onSubmit} className="space-y-4">
-        <FormField
-          label="Current Value"
-          name="valuation"
-          type="number"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          min="0.01"
-          step="0.01"
-          required
-        />
+    <div className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-3">
 
-        <div className="flex justify-end gap-2">
-          <ModalButton onClick={onClose}>Cancel</ModalButton>
+      <p className="text-xs text-slate-500">
+        {label}
+      </p>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Value"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
+      <p
+        className={`mt-1 font-medium ${valueClass}`}
+      >
+        KSh {formatMoney(value)}
+      </p>
 
-function RedemptionModal({
-  investment,
-  amount,
-  setAmount,
-  loading,
-  onClose,
-  onSubmit,
-}) {
-  const currentValue = Number(investment.current_value || 0);
-  const redemption = Number(amount || 0);
-
-  return (
-    <Modal title="Redeem Investment" subtitle={investment.name}>
-      <div className="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-3">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">Current value</span>
-          <span className="text-white">
-            KSh {formatMoney(currentValue)}
-          </span>
-        </div>
-
-        <div className="mt-2 flex justify-between text-sm">
-          <span className="text-slate-500">Remaining</span>
-          <span className="text-white">
-            KSh {formatMoney(Math.max(currentValue - redemption, 0))}
-          </span>
-        </div>
-      </div>
-
-      <form onSubmit={onSubmit} className="space-y-4">
-        <FormField
-          label="Redemption Amount"
-          name="redemption_amount"
-          type="number"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          min="0.01"
-          max={currentValue}
-          step="0.01"
-          required
-        />
-
-        <div className="flex justify-end gap-2">
-          <ModalButton onClick={onClose}>Cancel</ModalButton>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-          >
-            {loading ? "Processing..." : "Redeem"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-function Modal({ title, subtitle, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
-        <div className="mb-5">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
-        </div>
-
-        {children}
-      </div>
     </div>
   );
 }
 
-function ModalButton({ children, onClick }) {
+
+function ActionButton({
+  children,
+  onClick,
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+      className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
     >
       {children}
     </button>
   );
 }
 
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+
+function Modal({
+  title,
+  onClose,
+  children,
+  wide = false,
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+
+      <div
+        className={`w-full ${
+          wide ? "max-w-6xl" : "max-w-lg"
+        } max-h-[90vh] overflow-y-auto rounded-xl border border-slate-800 bg-slate-900`}
+      >
+
+        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+
+          <h2 className="text-sm font-semibold text-white">
+            {title}
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-2 py-1 text-slate-500 transition hover:bg-slate-800 hover:text-white"
+          >
+            ✕
+          </button>
+
+        </div>
+
+        <div className="p-4">
+          {children}
+        </div>
+
+      </div>
+
+    </div>
+  );
 }
 
-function formatType(value) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  min,
+  max,
+  step,
+  required = false,
+}) {
+  return (
+    <label className="block">
+
+      <span className="mb-1.5 block text-xs text-slate-400">
+        {label}
+      </span>
+
+      <input
+        type={type}
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        min={min}
+        max={max}
+        step={step}
+        required={required}
+        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-500"
+      />
+
+    </label>
+  );
 }
 
-function formatStatus(value) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+}) {
+  return (
+    <label className="block">
+
+      <span className="mb-1.5 block text-xs text-slate-400">
+        {label}
+      </span>
+
+      <select
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500"
+      >
+
+        {options.map(
+          ([optionValue, optionLabel]) => (
+            <option
+              key={optionValue}
+              value={optionValue}
+            >
+              {optionLabel}
+            </option>
+          )
+        )}
+
+      </select>
+
+    </label>
+  );
 }
 
-function formatDate(value) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString("en-KE", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+
+function Textarea({
+  label,
+  value,
+  onChange,
+}) {
+  return (
+    <label className="block">
+
+      <span className="mb-1.5 block text-xs text-slate-400">
+        {label}
+      </span>
+
+      <textarea
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+        rows={3}
+        className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-emerald-500"
+      />
+
+    </label>
+  );
 }
 
-export default InvestmentsPage;
+
+function ModalActions({
+  onCancel,
+  loading,
+  submitText,
+}) {
+  return (
+    <div className="flex justify-end gap-2 border-t border-slate-800 pt-4">
+
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={loading}
+        className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Cancel
+      </button>
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {loading ? "Saving..." : submitText}
+      </button>
+
+    </div>
+  );
+}

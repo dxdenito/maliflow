@@ -7,6 +7,7 @@ from app.models.obligation import Obligation
 from app.models.user import User
 from app.models.budget import Budget
 from app.models.investment import Investment
+from app.models.investment_transaction import InvestmentTransaction
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "Obligation",
     "Budget",
     "Investment",
+    "InvestmentTransaction",
 ]
