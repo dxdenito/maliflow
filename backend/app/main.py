@@ -14,6 +14,11 @@ from app.routes.budgets import router as budgets_router
 from app.routes.savings import router as savings_router
 from app.routes.obligations import router as obligations_router
 from app.routes.investments import router as investments_router
+from app.routes.major_purchase_routes import router as major_purchase_router
+from app.routes.financing_agreement_routes import router as financing_agreement_router
+from app.routes.major_purchase_payment_routes import router as major_purchase_payment_router
+
+
 
 
 
@@ -50,6 +55,9 @@ app.include_router(budgets_router)
 app.include_router(savings_router)
 app.include_router(obligations_router)
 app.include_router(investments_router)
+app.include_router(major_purchase_router, prefix="/api")
+app.include_router(financing_agreement_router, prefix="/api")
+app.include_router(major_purchase_payment_router, prefix="/api")
 
 
 @app.get("/")

@@ -51,3 +51,19 @@ class ObligationRepository:
             Obligation.expense_id == expense_id,
         )
         return list(self.db.scalars(statement).all())
+
+    def get_by_financing_agreement(
+        self,
+        financing_agreement_id: int,
+        user_id: int,
+        lock: bool = False,
+    ) -> Obligation | None:
+        query = select(Obligation).where(
+            Obligation.financing_agreement_id == financing_agreement_id,
+            Obligation.user_id == user_id,
+        )
+
+        if lock:
+            query = query.with_for_update()
+
+        return self.db.scalar(query)

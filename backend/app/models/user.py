@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 
 from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column,relationship
 
 from app.core.database import Base
 
@@ -61,3 +61,5 @@ class User(Base):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+
+    major_purchases = relationship("MajorPurchase", back_populates="user", cascade="all, delete-orphan")
