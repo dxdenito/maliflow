@@ -18,6 +18,8 @@ import BudgetsPage from "./pages/BudgetsPage";
 import SavingsPage from "./pages/SavingsPage";
 import ObligationsPage from "./pages/ObligationsPage";
 import InvestmentsPage from "./pages/InvestmentsPage";
+import MajorPurchasesPage from "./pages/MajorPurchasesPage";
+import MajorPurchaseDetailsPage from "./pages/MajorPurchaseDetailsPage";
 
 
 function App() {
@@ -53,6 +55,11 @@ function App() {
             <Route path="/savings" element={<SavingsPage />} />
             <Route path="/obligations" element={<ObligationsPage />} />
             <Route path="/investments" element={<InvestmentsPage />} />
+            <Route path="/major-purchases" element={<MajorPurchasesPage />} />
+            <Route
+              path="/major-purchases/:purchaseId"
+              element={<MajorPurchaseDetailsPage />}
+            />
 
           </Route>
 

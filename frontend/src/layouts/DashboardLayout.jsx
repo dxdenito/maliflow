@@ -10,6 +10,7 @@ const navigation = [
   { label: "Savings", path: "/savings", available: true },
   { label: "Investments", path: "/investments", available: true },
   { label: "Obligations", path: "/obligations", available: true },
+  { label: "Major Purchases", path: "/major-purchases", available: true },
 ];
 
 function DashboardLayout() {
