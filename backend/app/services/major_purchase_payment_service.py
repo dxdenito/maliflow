@@ -1,3 +1,4 @@
+
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -6,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.models.financial_account import FinancialAccount
 from app.models.ledger import LedgerEntry, LedgerEntryType
-from app.models.major_purchase_payment import MajorPurchasePayment
+from app.models.major_purchase_payment import MajorPurchasePayment, MajorPurchasePaymentType
 from app.models.major_purchase_payment_allocation import MajorPurchasePaymentAllocation, PaymentFundingSource
+from app.models.major_purchase import PurchaseType, MajorPurchaseStatus
+from app.models.financing_agreement import FinancingAgreementStatus
 from app.repositories import major_purchase_payment_repository
 from app.repositories import major_purchase_payment_allocation_repository
 from app.repositories import major_purchase_repository
@@ -41,10 +44,16 @@ class MajorPurchasePaymentService:
                     detail="Major purchase not found",
                 )
 
-            if purchase.status.value == "cancelled":
+            if purchase.status == MajorPurchaseStatus.CANCELLED:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot make a payment toward a cancelled purchase",
+                )
+
+            if purchase.status == MajorPurchaseStatus.COMPLETED:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot make a payment toward a completed purchase",
                 )
 
             agreement = None
@@ -68,6 +77,47 @@ class MajorPurchasePaymentService:
                         detail="Financing agreement does not belong to this purchase",
                     )
 
+            # ---------------------------------------------------------
+            # Validate purchase/payment combination
+            # ---------------------------------------------------------
+
+            if purchase.purchase_type == PurchaseType.CASH:
+                if data.financing_agreement_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Cash purchases cannot have a financing agreement",
+                    )
+
+                if data.payment_type != MajorPurchasePaymentType.CASH_PURCHASE:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Cash purchases must use the cash_purchase payment type",
+                    )
+
+            elif purchase.purchase_type == PurchaseType.FINANCED:
+                if not agreement:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Financed purchases require a financing agreement",
+                    )
+
+                if data.payment_type == MajorPurchasePaymentType.CASH_PURCHASE:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Financed purchases cannot use the cash_purchase payment type",
+                    )
+
+                if data.payment_type == MajorPurchasePaymentType.DEPOSIT:
+                    if agreement.deposit_amount <= 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="This financing agreement has no deposit",
+                        )
+
+            # ---------------------------------------------------------
+            # Validate allocations
+            # ---------------------------------------------------------
+
             if not allocations:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -84,6 +134,10 @@ class MajorPurchasePaymentService:
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Payment allocations must equal the payment amount",
                 )
+
+            # ---------------------------------------------------------
+            # Lock financial account
+            # ---------------------------------------------------------
 
             account = self.db.scalar(
                 select(FinancialAccount)
@@ -127,9 +181,13 @@ class MajorPurchasePaymentService:
                     detail="Insufficient savings funds",
                 )
 
+            # ---------------------------------------------------------
+            # Determine obligation
+            # ---------------------------------------------------------
+
             obligation = None
 
-            if agreement and data.payment_type.value != "deposit":
+            if agreement and data.payment_type != MajorPurchasePaymentType.DEPOSIT:
                 obligation = self.obligation_repository.get_by_financing_agreement(
                     agreement.id,
                     user_id,
@@ -150,8 +208,40 @@ class MajorPurchasePaymentService:
                         detail="Payment exceeds the remaining financing balance",
                     )
 
+            # ---------------------------------------------------------
+            # Cash purchase balance validation
+            # ---------------------------------------------------------
+
+            if purchase.purchase_type == PurchaseType.CASH:
+                existing_payments = major_purchase_payment_repository.get_payments_for_purchase(
+                    self.db,
+                    purchase.id,
+                    user_id,
+                )
+
+                amount_already_paid = sum(
+                    (payment.amount for payment in existing_payments),
+                    Decimal("0.00"),
+                )
+
+                remaining_purchase_balance = purchase.purchase_price - amount_already_paid
+
+                if data.amount > remaining_purchase_balance:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Payment exceeds the remaining purchase balance",
+                    )
+
+            # ---------------------------------------------------------
+            # Update financial account
+            # ---------------------------------------------------------
+
             account.available_funds -= available_amount
             account.savings_funds -= savings_amount
+
+            # ---------------------------------------------------------
+            # Create payment
+            # ---------------------------------------------------------
 
             payment = MajorPurchasePayment(
                 user_id=user_id,
@@ -167,14 +257,21 @@ class MajorPurchasePaymentService:
             self.db.add(payment)
             self.db.flush()
 
+            # ---------------------------------------------------------
+            # Create allocations
+            # ---------------------------------------------------------
+
             for allocation_data in allocations:
-                self.db.add(
-                    MajorPurchasePaymentAllocation(
-                        payment_id=payment.id,
-                        funding_source=allocation_data.funding_source,
-                        amount=allocation_data.amount,
-                    )
+                allocation = MajorPurchasePaymentAllocation(
+                    payment_id=payment.id,
+                    funding_source=allocation_data.funding_source,
+                    amount=allocation_data.amount,
                 )
+                self.db.add(allocation)
+
+            # ---------------------------------------------------------
+            # Ledger entry
+            # ---------------------------------------------------------
 
             self.db.add(
                 LedgerEntry(
@@ -188,17 +285,34 @@ class MajorPurchasePaymentService:
                 )
             )
 
+            # ---------------------------------------------------------
+            # Update financing obligation
+            # ---------------------------------------------------------
+
             if obligation:
                 obligation.amount_paid += data.amount
 
                 if obligation.amount_paid == obligation.amount:
                     from app.models.obligation import ObligationStatus
-
                     obligation.status = ObligationStatus.PAID
                 else:
                     from app.models.obligation import ObligationStatus
-
                     obligation.status = ObligationStatus.PARTIALLY_PAID
+
+            # ---------------------------------------------------------
+            # Determine whether purchase is completed
+            # ---------------------------------------------------------
+
+            if purchase.purchase_type == PurchaseType.CASH:
+                new_total_paid = amount_already_paid + data.amount
+
+                if new_total_paid == purchase.purchase_price:
+                    purchase.status = MajorPurchaseStatus.COMPLETED
+
+            elif purchase.purchase_type == PurchaseType.FINANCED:
+                if obligation and obligation.amount_paid == obligation.amount:
+                    purchase.status = MajorPurchaseStatus.COMPLETED
+                    agreement.status = FinancingAgreementStatus.SETTLED
 
             self.db.commit()
             self.db.refresh(payment)
@@ -266,3 +380,4 @@ class MajorPurchasePaymentService:
             self.db,
             payment_id,
         )
+

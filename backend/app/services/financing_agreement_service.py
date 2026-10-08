@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.financing_agreement import FinancingAgreement
+from app.models.financing_agreement import FinancingAgreement, FinancingAgreementStatus
 from app.models.obligation import Obligation, ObligationSource, ObligationStatus
 from app.repositories import financing_agreement_repository
 from app.repositories import major_purchase_repository
@@ -12,10 +13,16 @@ from app.schemas.financing_agreement_schema import FinancingAgreementCreate, Fin
 
 def create_agreement(db: Session, user_id: int, data: FinancingAgreementCreate) -> FinancingAgreement:
     purchase = major_purchase_repository.get_purchase(db, data.purchase_id, user_id)
+
     if not purchase:
         raise ValueError("Major purchase not found")
 
-    existing = financing_agreement_repository.get_agreement_by_purchase(db, data.purchase_id, user_id)
+    existing = financing_agreement_repository.get_agreement_by_purchase(
+        db,
+        data.purchase_id,
+        user_id,
+    )
+
     if existing:
         raise ValueError("This purchase already has a financing agreement")
 
@@ -69,8 +76,16 @@ def create_agreement(db: Session, user_id: int, data: FinancingAgreementCreate) 
         raise
 
 
-def get_agreement(db: Session, user_id: int, agreement_id: int) -> FinancingAgreement:
-    agreement = financing_agreement_repository.get_agreement(db, agreement_id, user_id)
+def get_agreement(
+    db: Session,
+    user_id: int,
+    agreement_id: int,
+) -> FinancingAgreement:
+    agreement = financing_agreement_repository.get_agreement(
+        db,
+        agreement_id,
+        user_id,
+    )
 
     if not agreement:
         raise ValueError("Financing agreement not found")
@@ -78,8 +93,16 @@ def get_agreement(db: Session, user_id: int, agreement_id: int) -> FinancingAgre
     return agreement
 
 
-def get_agreement_for_purchase(db: Session, user_id: int, purchase_id: int) -> FinancingAgreement:
-    agreement = financing_agreement_repository.get_agreement_by_purchase(db, purchase_id, user_id)
+def get_agreement_for_purchase(
+    db: Session,
+    user_id: int,
+    purchase_id: int,
+) -> FinancingAgreement:
+    agreement = financing_agreement_repository.get_agreement_by_purchase(
+        db,
+        purchase_id,
+        user_id,
+    )
 
     if not agreement:
         raise ValueError("Financing agreement not found")
@@ -87,8 +110,14 @@ def get_agreement_for_purchase(db: Session, user_id: int, purchase_id: int) -> F
     return agreement
 
 
-def get_agreements(db: Session, user_id: int) -> list[FinancingAgreement]:
-    return financing_agreement_repository.get_agreements(db, user_id)
+def get_agreements(
+    db: Session,
+    user_id: int,
+) -> list[FinancingAgreement]:
+    return financing_agreement_repository.get_agreements(
+        db,
+        user_id,
+    )
 
 
 def update_agreement(
@@ -99,7 +128,24 @@ def update_agreement(
 ) -> FinancingAgreement:
     agreement = get_agreement(db, user_id, agreement_id)
 
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(agreement, field, value)
+    if agreement.status == FinancingAgreementStatus.SETTLED:
+        raise ValueError("Cannot update a settled financing agreement")
 
-    return financing_agreement_repository.update_agreement(db, agreement)
+    if agreement.status == FinancingAgreementStatus.CANCELLED:
+        raise ValueError("Cannot update a cancelled financing agreement")
+
+    try:
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(agreement, field, value)
+
+        financing_agreement_repository.update_agreement(db, agreement)
+
+        db.commit()
+        db.refresh(agreement)
+
+        return agreement
+
+    except Exception:
+        db.rollback()
+        raise
+
