@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import Date, DateTime, Enum as SQLEnum, ForeignKey, Numeric, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -52,6 +52,7 @@ class Obligation(Base):
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     obligation_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    financing_agreement_id: Mapped[int | None] = mapped_column(ForeignKey("financing_agreements.id", ondelete="SET NULL"), nullable=True, index=True)
 
     status: Mapped[ObligationStatus] = mapped_column(
         SQLEnum(ObligationStatus),
@@ -79,3 +80,5 @@ class Obligation(Base):
     @property
     def remaining_balance(self) -> Decimal:
         return self.amount - self.amount_paid
+
+    financing_agreement = relationship("FinancingAgreement", back_populates="obligation")

@@ -8,6 +8,10 @@ from app.models.user import User
 from app.models.budget import Budget
 from app.models.investment import Investment
 from app.models.investment_transaction import InvestmentTransaction
+from app.models.major_purchase import MajorPurchase
+from app.models.financing_agreement import FinancingAgreement
+from app.models.major_purchase_payment import MajorPurchasePayment
+from app.models.major_purchase_payment_allocation import MajorPurchasePaymentAllocation
 
 __all__ = [
     "User",
@@ -20,4 +24,8 @@ __all__ = [
     "Budget",
     "Investment",
     "InvestmentTransaction",
+    "MajorPurchase",
+    "FinancingAgreement",
+    "MajorPurchasePayment",
+    "MajorPurchasePaymentAllocation"
 ]
